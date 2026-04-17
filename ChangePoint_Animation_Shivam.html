@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Change Point Detection — Himalayan Snowfall</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117; --surface:#161b22; --surface2:#21262d;
+    --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --pos:#3fb950; --neg:#f85149; --cusum:#58a6ff;
+    --seg:#ffa657; --cp:#ff7b72; --decade:#484f58;
+    --accent:#1f6feb;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'EB Garamond',Georgia,serif;min-height:100vh;padding:0}
+  h1{font-size:1.5rem;font-weight:600;letter-spacing:.01em;color:#e6edf3}
+  h2{font-size:1.1rem;font-weight:400;font-style:italic;color:var(--muted);margin-top:.25rem}
+  .header{padding:2rem 2.5rem 1rem;border-bottom:1px solid var(--border)}
+  .header-meta{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);margin-top:.5rem;letter-spacing:.05em}
+  .tab-row{display:flex;gap:0;padding:0 2.5rem;border-bottom:1px solid var(--border);background:var(--surface)}
+  .tab{padding:.6rem 1.4rem;cursor:pointer;font-size:.92rem;border-bottom:2px solid transparent;color:var(--muted);transition:all .2s;user-select:none;font-family:'EB Garamond',serif}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent)}
+  .tab:hover:not(.active){color:var(--text)}
+  .region-row{display:flex;flex-wrap:wrap;gap:.5rem;padding:1rem 2.5rem;border-bottom:1px solid var(--border);align-items:center}
+  .region-btn{padding:.28rem .75rem;border-radius:20px;font-size:.82rem;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .18s;font-family:'EB Garamond',serif}
+  .region-btn.active{color:#fff;border-color:transparent}
+  .region-btn:hover{opacity:.85}
+  .controls{display:flex;align-items:center;gap:1.2rem;padding:.75rem 2.5rem;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap}
+  .ctrl-label{font-size:.8rem;color:var(--muted);font-family:'JetBrains Mono',monospace}
+  .btn{padding:.32rem .9rem;border-radius:6px;cursor:pointer;font-size:.85rem;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:all .15s;font-family:'EB Garamond',serif}
+  .btn:hover{background:var(--accent);border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  input[type=range]{-webkit-appearance:none;height:3px;background:var(--border);border-radius:2px;outline:none;width:140px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer}
+  .main{display:flex;height:calc(100vh - 230px);min-height:420px}
+  .sidebar{width:220px;border-right:1px solid var(--border);padding:1rem;overflow-y:auto;flex-shrink:0}
+  .sidebar-title{font-size:.75rem;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:.08em;margin-bottom:.75rem;text-transform:uppercase}
+  .stat-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;margin-bottom:.6rem}
+  .stat-label{font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.05em}
+  .stat-value{font-size:1.05rem;font-weight:600;margin-top:.2rem;color:var(--text)}
+  .cp-tag{display:inline-block;padding:.1rem .45rem;border-radius:4px;font-size:.72rem;font-family:'JetBrains Mono',monospace;background:rgba(255,123,114,.15);color:var(--cp);border:1px solid rgba(255,123,114,.3);margin:.1rem}
+  .chart-area{flex:1;position:relative;overflow:hidden}
+  canvas{display:block;position:absolute;top:0;left:0}
+  .legend{display:flex;flex-wrap:wrap;gap:.9rem;padding:.6rem 2.5rem;border-top:1px solid var(--border);background:var(--surface);font-size:.78rem;align-items:center}
+  .leg-item{display:flex;align-items:center;gap:.4rem;color:var(--muted)}
+  .leg-swatch{width:22px;height:3px;border-radius:2px}
+  .leg-swatch.bar-pos{height:12px;width:12px;border-radius:2px;background:var(--pos)}
+  .leg-swatch.bar-neg{height:12px;width:12px;border-radius:2px;background:var(--neg)}
+  .leg-swatch.cusum{background:var(--cusum);height:2px}
+  .leg-swatch.seg{background:var(--seg);height:3px}
+  .leg-swatch.cp{background:var(--cp);width:1px;height:14px}
+  .leg-swatch.decade{background:var(--decade);height:2px;border-top:1px dashed var(--decade);background:transparent;width:22px;border-bottom:1px dashed var(--decade)}
+  .progress-bar{height:2px;background:var(--accent);transition:width .1s linear;position:absolute;top:0;left:0}
+  .tooltip{position:fixed;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;font-size:.8rem;font-family:'JetBrains Mono',monospace;pointer-events:none;opacity:0;transition:opacity .15s;z-index:100;color:var(--text)}
+  .seg-change{font-size:.72rem;padding:.15rem .4rem;border-radius:3px;font-family:'JetBrains Mono',monospace}
+  .seg-change.up{color:#3fb950;background:rgba(63,185,80,.1)}
+  .seg-change.down{color:#f85149;background:rgba(248,81,73,.1)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Change Point Detection — Himalayan Snowfall Anomaly</h1>
+  <h2>PELT Algorithm · CUSUM Overlay · 1980–2020</h2>
+  <div class="header-meta">STANDARDISED ANOMALY · NDJFM SEASON · METHOD: PRUNED EXACT LINEAR TIME (PELT, BIC)</div>
+</div>
+
+<div class="tab-row">
+  <div class="tab active" onclick="switchDataset('state',this)">State / Country Level</div>
+  <div class="tab" onclick="switchDataset('zonal',this)">Zonal / Macro Level</div>
+</div>
+
+<div class="region-row" id="region-row"></div>
+
+<div class="controls">
+  <button class="btn primary" id="play-btn" onclick="togglePlay()">▶ Play Animation</button>
+  <button class="btn" onclick="resetAnim()">↺ Reset</button>
+  <span class="ctrl-label">Speed</span>
+  <input type="range" id="speed-range" min="1" max="8" value="4" oninput="updateSpeed(this.value)">
+  <span class="ctrl-label" id="speed-label">4×</span>
+  <span class="ctrl-label" style="margin-left:auto">
+    Show: <label style="cursor:pointer;margin-left:.5rem"><input type="checkbox" id="show-cusum" checked onchange="redraw()"> CUSUM</label>
+    <label style="cursor:pointer;margin-left:.75rem"><input type="checkbox" id="show-seg" checked onchange="redraw()"> Segment means</label>
+  </span>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-title">Statistics</div>
+    <div id="stat-cards"></div>
+  </div>
+  <div class="chart-area" id="chart-area">
+    <canvas id="c"></canvas>
+    <div class="progress-bar" id="prog"></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="leg-item"><span class="leg-swatch bar-pos"></span> Positive anomaly</span>
+  <span class="leg-item"><span class="leg-swatch bar-neg"></span> Negative anomaly</span>
+  <span class="leg-item"><span class="leg-swatch cusum" style="width:22px;height:2px;background:#58a6ff;display:inline-block"></span> CUSUM</span>
+  <span class="leg-item"><span class="leg-swatch seg" style="width:22px;height:3px;background:#ffa657;display:inline-block"></span> Segment mean</span>
+  <span class="leg-item"><span class="leg-swatch" style="width:2px;height:14px;background:#ff7b72;display:inline-block;border-radius:1px"></span> Change point</span>
+  <span class="leg-item"><span class="leg-swatch" style="width:22px;height:0;border-top:1px dashed #484f58;display:inline-block"></span> Decadal boundary</span>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const YEARS=[1980,1981,1982,1983,1984,1985,1986,1987,1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020];
+
+const DATA={
+ state:{
+  "Himalaya":{vals:[0.0915,0.9731,1.4874,-0.4329,-0.7688,-0.4388,0.3944,-0.9263,-0.0399,-0.3428,0.1062,-1.2301,-0.2587,-0.4893,-0.2968,-0.0238,-0.0077,-0.7994,-1.1909,-1.0168,-0.918,-1.2515,-0.6627,0.5012,-0.8812,-0.0173,0.1717,0.4975,-0.1962,-0.4086,-0.4167,-0.3841,-0.4125,0.41,-0.1446,1.2076,0.1041,1.5869,0.0402,3.585,2.7996],cpts:[19,24,29,34]},
+  "Bhutan":{vals:[1.0042,1.9956,0.1014,-0.8407,-1.3977,-0.7311,-1.3343,0.2543,-0.3804,0.8777,-0.2831,-0.2408,-0.9311,0.7214,0.2933,2.126,0.5663,0.2117,0.9145,-1.697,-0.5269,-1.0596,-0.1662,0.9201,-1.1234,-0.1212,-1.0057,1.5608,0.637,-1.3323,-1.1794,-0.1945,-0.4711,-0.5668,-1.2379,-0.1162,0.2915,1.2579,1.4581,1.5117,0.2343],cpts:[33]},
+  "Nepal":{vals:[-0.3714,0.5751,0.7941,-0.6836,-0.2078,-0.0301,-0.2475,-0.804,0.2327,-0.2315,-0.3137,-0.1187,-1.016,-0.4622,-0.6828,-0.07,-0.11,-0.3689,-0.6252,-1.0053,-0.9011,-1.1214,-0.091,-0.2351,-0.6594,0.2615,-0.182,2.0064,-0.8813,-0.9494,-0.5829,-0.4357,-0.3833,1.6653,0.5002,1.8746,0.0326,0.2142,-0.3878,3.4465,2.5558],cpts:[18,23,28,33]},
+  "West Bengal":{vals:[-0.5318,0.03,0.943,-0.6735,-0.4514,-0.3094,-0.6205,-0.7143,-0.5659,0.9078,-0.4839,-0.1964,-1.0045,-0.0399,-0.0715,0.8989,0.5103,-0.4222,0.4761,-1.205,-0.7629,-1.0858,-0.5717,0.7471,-0.7356,-0.3053,-0.9778,0.1312,-0.4593,-1.0693,-1.1164,-0.088,-0.4316,0.185,-0.8086,0.7525,1.537,1.4034,1.484,2.2314,3.4648],cpts:[9,14,21,26,31]},
+  "Arunachal Pradesh":{vals:[2.3214,2.5446,0.8346,0.5137,-0.615,0.5121,-0.9182,-0.9615,0.3262,1.6647,0.1695,-0.5848,0.7402,1.0262,0.596,-0.4189,-0.3984,1.0735,0.3873,-1.8988,-0.3193,-1.4539,-0.4213,-0.915,-1.3986,0.8548,0.0402,0.5579,0.4371,-0.8561,-0.3633,0.0951,-0.9579,-1.1443,-1.3122,-1.0656,-0.2513,-0.2463,1.2367,0.5361,0.033],cpts:[5,10,15,20,28]},
+  "Himachal Pradesh":{vals:[0.0103,1.0015,1.3303,-0.8038,-0.7839,-0.4743,-0.355,-0.6619,-0.4321,-0.0895,-0.0477,-1.1296,-0.2838,-0.2434,-0.5017,0.0035,-0.103,-0.3989,-0.8756,-0.9117,-0.6226,-0.9911,-0.4671,0.2017,-0.5942,0.0465,-0.3634,0.5338,-0.7909,-0.6709,-0.6389,-0.7478,-0.5732,0.467,0.1414,1.2199,0.7712,2.1427,0.4879,3.553,2.6455],cpts:[19,24,29,34]},
+  "Jammu and Kashmir":{vals:[-0.2386,0.5653,2.1874,0.0844,-0.6271,-0.5401,1.1401,-0.9225,0.0473,-0.5647,0.4163,-1.3791,0.3658,-0.4859,0.0097,0.0687,-0.0472,-1.045,-1.2887,-0.9793,-0.9038,-1.3149,-1.0271,1.0436,-0.9047,0.0955,0.0159,0.2661,-0.1709,-0.2742,-0.299,-0.3061,-0.226,-0.01,-0.3904,1.1478,-0.2132,1.6453,-0.3901,3.1497,2.2997],cpts:[5,21,26,31]},
+  "Ladakh":{vals:[0.285,1.0013,1.1559,-0.2623,-0.8387,-0.4405,0.7587,-0.9154,0.0175,-0.4749,0.2231,-1.4849,-0.12,-0.688,-0.1254,-0.1652,0.0479,-1.1171,-1.4717,-0.7992,-0.929,-1.0837,-0.8485,0.696,-0.9006,-0.2871,0.6578,-0.1382,0.449,0.0636,-0.2358,-0.1406,-0.2984,-0.11,-0.4607,0.9044,0.0657,1.7921,0.1484,3.5236,2.5459],cpts:[19,24,29,34]},
+  "Uttarakhand":{vals:[-0.1715,0.4379,0.7672,-0.8582,-0.7269,-0.3836,-0.4072,-0.8567,-0.1257,-0.1043,-0.1663,-0.6624,-0.9439,-0.0472,-0.6654,0.1125,0.0126,0.2371,-0.5887,-0.9192,-0.6082,-1.0365,0.6305,-0.0515,-0.4801,0.2346,-0.2495,0.7886,-1.0419,-1.0416,-0.4043,-0.7164,-0.5701,2.0282,1.2687,1.1528,-0.2429,0.3099,-0.2465,2.6866,3.6492],cpts:[13,18,23,28,33]},
+  "Sikkim":{vals:[-0.3453,0.4908,0.9954,-0.7829,-0.7865,-0.5766,-0.7577,-0.6322,-0.7227,0.751,-0.5062,0.0541,-1.199,-0.3242,-0.043,1.5506,0.5938,-0.3617,0.3117,-1.2717,-0.9321,-0.9629,-0.4378,0.4745,-0.8943,-0.3192,-0.8287,-0.1136,-0.1554,-1.023,-0.8872,-0.1313,-0.3543,0.2563,-0.7853,0.5489,1.529,1.4352,1.921,2.3923,2.8302],cpts:[9,14,21,26,31]}
+ },
+ zonal:{
+  "Himalaya":{vals:[0.0915,0.9731,1.4874,-0.4329,-0.7688,-0.4388,0.3944,-0.9263,-0.0399,-0.3428,0.1062,-1.2301,-0.2587,-0.4893,-0.2968,-0.0238,-0.0077,-0.7994,-1.1909,-1.0168,-0.918,-1.2515,-0.6627,0.5012,-0.8812,-0.0173,0.1717,0.4975,-0.1962,-0.4086,-0.4167,-0.3841,-0.4125,0.41,-0.1446,1.2076,0.1041,1.5869,0.0402,3.585,2.7996],cpts:[19,24,29,34]},
+  "Western Himalaya":{vals:[1.5594,2.2854,0.7752,-0.2556,-1.0816,-0.1484,-1.226,-0.6127,-0.162,1.4737,-0.1568,-0.4124,-0.2782,0.7668,0.4278,0.9918,0.1614,0.5682,0.6618,-2.0535,-0.632,-1.4856,-0.4256,-0.002,-1.4463,0.3351,-0.6058,0.8899,0.4276,-1.2746,-0.9154,-0.0573,-0.8124,-0.7805,-1.4215,-0.4673,0.4033,0.7506,1.7602,1.5412,0.9342],cpts:[5,16,33]},
+  "Central Himalaya":{vals:[-0.3714,0.5751,0.7941,-0.6836,-0.2078,-0.0301,-0.2475,-0.804,0.2327,-0.2315,-0.3137,-0.1187,-1.016,-0.4622,-0.6828,-0.07,-0.11,-0.3689,-0.6252,-1.0053,-0.9011,-1.1214,-0.091,-0.2351,-0.6594,0.2615,-0.182,2.0064,-0.8813,-0.9494,-0.5829,-0.4357,-0.3833,1.6653,0.5002,1.8746,0.0326,0.2142,-0.3878,3.4465,2.5558],cpts:[18,23,28,33]},
+  "Eastern Himalaya":{vals:[0.0717,0.9012,1.5005,-0.3636,-0.8055,-0.4987,0.5455,-0.9046,-0.0864,-0.411,0.1915,-1.3742,-0.1106,-0.508,-0.2317,-0.0476,-0.0092,-0.8716,-1.2838,-0.9315,-0.8761,-1.1838,-0.7249,0.6438,-0.8424,-0.0743,0.2098,0.2048,-0.1182,-0.2974,-0.3673,-0.384,-0.3823,0.2343,-0.1701,1.117,0.1162,1.7858,0.0447,3.5391,2.7532],cpts:[19,24,29,34]}
+ }
+};
+
+const REG_COLORS={
+ "Himalaya":"#58a6ff","Bhutan":"#f85149","Nepal":"#3fb950",
+ "West Bengal":"#e3b341","Arunachal Pradesh":"#d2a8ff",
+ "Himachal Pradesh":"#ffa657","Jammu and Kashmir":"#79c0ff",
+ "Ladakh":"#56d364","Uttarakhand":"#ff9492","Sikkim":"#f0883e",
+ "Western Himalaya":"#f85149","Central Himalaya":"#3fb950","Eastern Himalaya":"#d2a8ff"
+};
+
+let dataset='state', region='Himalaya', animFrame=0, playing=false, rafId=null, speed=4, lastTime=0;
+const N=YEARS.length;
+
+function getRegions(){return Object.keys(DATA[dataset]);}
+function getData(){return DATA[dataset][region];}
+
+function computeSegMeans(vals,cpts){
+  const breaks=[0,...cpts,N];
+  return breaks.slice(0,-1).map((s,i)=>{
+    const e=breaks[i+1];
+    const seg=vals.slice(s,e);
+    return{start:s,end:e-1,mean:seg.reduce((a,b)=>a+b,0)/seg.length};
+  });
+}
+
+function computeCUSUM(vals){
+  const m=vals.reduce((a,b)=>a+b,0)/vals.length;
+  let s=0;return vals.map(v=>(s+=v-m,s));
+}
+
+// ── Region buttons ──────────────────────────────────────
+function buildRegionButtons(){
+  const row=document.getElementById('region-row');
+  row.innerHTML='';
+  getRegions().forEach(r=>{
+    const b=document.createElement('button');
+    b.className='region-btn'+(r===region?' active':'');
+    b.textContent=r;
+    b.style.borderColor=r===region?REG_COLORS[r]:'';
+    b.style.background=r===region?REG_COLORS[r]+'22':'';
+    b.style.color=r===region?REG_COLORS[r]:'';
+    b.onclick=()=>selectRegion(r);
+    row.appendChild(b);
+  });
+}
+
+function selectRegion(r){
+  region=r; animFrame=0; playing=false;
+  document.getElementById('play-btn').textContent='▶ Play Animation';
+  buildRegionButtons(); updateSidebar(); redraw();
+}
+
+function switchDataset(ds,el){
+  dataset=ds;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  region=getRegions()[0]; animFrame=0; playing=false;
+  document.getElementById('play-btn').textContent='▶ Play Animation';
+  buildRegionButtons(); updateSidebar(); redraw();
+}
+
+// ── Sidebar stats ────────────────────────────────────────
+function updateSidebar(){
+  const {vals,cpts}=getData();
+  const segs=computeSegMeans(vals,cpts);
+  const m=vals.reduce((a,b)=>a+b,0)/N;
+  const sd=Math.sqrt(vals.reduce((a,b)=>a+(b-m)**2,0)/N);
+  const cpYears=cpts.map(i=>YEARS[i]);
+  const trend=vals[N-1]-vals[0]>0?'Increasing':'Decreasing';
+  let html=`
+  <div class="stat-card"><div class="stat-label">REGION</div><div class="stat-value" style="font-size:.9rem;color:${REG_COLORS[region]}">${region}</div></div>
+  <div class="stat-card"><div class="stat-label">MEAN ANOMALY</div><div class="stat-value">${m.toFixed(3)}</div></div>
+  <div class="stat-card"><div class="stat-label">STD DEV</div><div class="stat-value">${sd.toFixed(3)}</div></div>
+  <div class="stat-card"><div class="stat-label">CHANGE POINTS</div><div class="stat-value">${cpts.length}</div>
+    <div style="margin-top:.35rem">${cpYears.map(y=>`<span class="cp-tag">${y}</span>`).join('')}</div>
+  </div>
+  <div class="stat-card"><div class="stat-label">SEGMENTS</div><div class="stat-value">${segs.length}</div>
+    ${segs.map((s,i)=>{
+      const dir=i>0?(s.mean>segs[i-1].mean?'up':'down'):null;
+      return`<div style="font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:.2rem">
+        ${YEARS[s.start]}–${YEARS[s.end]}: <span style="color:${s.mean>=0?'#3fb950':'#f85149'}">${s.mean.toFixed(3)}</span>
+        ${dir?`<span class="seg-change ${dir}">${dir==='up'?'↑':'↓'}</span>`:''}
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="stat-card"><div class="stat-label">OVERALL TREND</div><div class="stat-value" style="font-size:.9rem;color:${trend==='Increasing'?'#3fb950':'#f85149'}">${trend}</div></div>
+  `;
+  document.getElementById('stat-cards').innerHTML=html;
+}
+
+// ── Canvas drawing ───────────────────────────────────────
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const PAD={top:40,right:30,bottom:50,left:55};
+
+function resize(){
+  const area=document.getElementById('chart-area');
+  canvas.width=area.clientWidth;
+  canvas.height=area.clientHeight;
+  redraw();
+}
+
+function redraw(){draw(animFrame);}
+
+function draw(frame){
+  const W=canvas.width, H=canvas.height;
+  const {vals,cpts}=getData();
+  const cusum=computeCUSUM(vals);
+  const segs=computeSegMeans(vals,cpts);
+  const showCusum=document.getElementById('show-cusum').checked;
+  const showSeg=document.getElementById('show-seg').checked;
+  const col=REG_COLORS[region];
+
+  ctx.clearRect(0,0,W,H);
+
+  const plotW=W-PAD.left-PAD.right;
+  const plotH=H-PAD.top-PAD.bottom;
+  const barW=plotW/N;
+
+  // y-scale: both vals and cusum
+  const allY=[...vals,...(showCusum?cusum:[])];
+  const yMin=Math.min(...allY)*1.15, yMax=Math.max(...allY)*1.15;
+  const yRange=yMax-yMin;
+
+  const px=i=>PAD.left+(i+0.5)*barW;
+  const py=v=>PAD.top+plotH-(v-yMin)/yRange*plotH;
+  const y0=py(0);
+
+  // Grid lines
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  [-2,-1,0,1,2,3,4].forEach(g=>{
+    if(g<yMin||g>yMax)return;
+    const y=py(g);
+    ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(W-PAD.right,y);
+    ctx.stroke();
+    ctx.fillStyle='#484f58';ctx.font='10px JetBrains Mono,monospace';
+    ctx.textAlign='right';ctx.fillText(g.toFixed(0),PAD.left-6,y+3.5);
+  });
+
+  // Decade dashed lines
+  ctx.setLineDash([4,4]); ctx.strokeStyle='#484f58'; ctx.lineWidth=.8;
+  [1990,2000,2010].forEach(yr=>{
+    const xi=YEARS.indexOf(yr);
+    if(xi<0)return;
+    const x=PAD.left+xi*barW;
+    ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+plotH);ctx.stroke();
+    ctx.fillStyle='#484f58';ctx.font='9px JetBrains Mono,monospace';ctx.textAlign='center';
+    ctx.fillText(yr,x,PAD.top-6);
+  });
+  ctx.setLineDash([]);
+
+  // X-axis labels
+  ctx.fillStyle='#8b949e';ctx.font='10px JetBrains Mono,monospace';ctx.textAlign='center';
+  [1980,1985,1990,1995,2000,2005,2010,2015,2020].forEach(yr=>{
+    const xi=YEARS.indexOf(yr);
+    if(xi<0)return;
+    ctx.fillText(yr,px(xi),PAD.top+plotH+18);
+  });
+
+  // Axis labels
+  ctx.save();ctx.translate(14,PAD.top+plotH/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#8b949e';ctx.font='11px EB Garamond,serif';ctx.textAlign='center';
+  ctx.fillText('Standardised Anomaly',0,0);ctx.restore();
+  ctx.fillStyle='#8b949e';ctx.font='11px EB Garamond,serif';ctx.textAlign='center';
+  ctx.fillText('Year',W/2,H-8);
+
+  const count=Math.min(frame,N);
+
+  // Bars (animated)
+  for(let i=0;i<count;i++){
+    const v=vals[i];
+    const x=PAD.left+i*barW+barW*.1;
+    const bw=barW*.8;
+    const top=v>=0?py(v):y0;
+    const bh=Math.abs(py(v)-y0);
+    // Glow for large values
+    if(Math.abs(v)>1.5){
+      ctx.shadowColor=v>=0?'rgba(63,185,80,.4)':'rgba(248,81,73,.4)';
+      ctx.shadowBlur=6;
+    }
+    ctx.fillStyle=v>=0?'#3fb950':'#f85149';
+    ctx.globalAlpha=.85;
+    ctx.fillRect(x,top,bw,Math.max(bh,1));
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+
+  // Segment means (animated — draw up to current frame)
+  if(showSeg){
+    segs.forEach(s=>{
+      if(s.start>=count)return;
+      const end=Math.min(s.end,count-1);
+      const x1=PAD.left+s.start*barW;
+      const x2=PAD.left+(end+1)*barW;
+      const y=py(s.mean);
+      ctx.strokeStyle=col; ctx.lineWidth=2.5; ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
+      // Label
+      if(end===s.end){
+        ctx.fillStyle=col;ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='center';
+        ctx.fillText(s.mean.toFixed(2),(x1+x2)/2,y-(s.mean>=0?8:-14));
+      }
+    });
+  }
+
+  // Change point lines (appear at their index)
+  cpts.forEach(cp=>{
+    if(cp>=count)return;
+    const x=PAD.left+cp*barW;
+    ctx.setLineDash([6,3]); ctx.strokeStyle='#ff7b72'; ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+plotH);ctx.stroke();
+    ctx.setLineDash([]);
+    // Year label badge
+    const yr=YEARS[cp];
+    ctx.fillStyle='rgba(255,123,114,.15)';
+    const lw=ctx.measureText(yr).width+12;
+    ctx.fillRect(x-lw/2,PAD.top+4,lw,16);
+    ctx.strokeStyle='rgba(255,123,114,.5)';ctx.lineWidth=.6;
+    ctx.strokeRect(x-lw/2,PAD.top+4,lw,16);
+    ctx.fillStyle='#ff7b72';ctx.font='bold 9px JetBrains Mono,monospace';ctx.textAlign='center';
+    ctx.fillText(yr,x,PAD.top+15);
+  });
+
+  // Zero line
+  ctx.strokeStyle='#8b949e'; ctx.lineWidth=.8; ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(PAD.left,y0);ctx.lineTo(W-PAD.right,y0);ctx.stroke();
+
+  // CUSUM line (animated)
+  if(showCusum&&count>1){
+    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=1.8; ctx.setLineDash([]);
+    ctx.beginPath();
+    for(let i=0;i<count;i++){
+      if(i===0) ctx.moveTo(px(i),py(cusum[i]));
+      else ctx.lineTo(px(i),py(cusum[i]));
+    }
+    ctx.stroke();
+    // Dot at current position
+    if(count<N){
+      ctx.beginPath();ctx.arc(px(count-1),py(cusum[count-1]),3.5,0,Math.PI*2);
+      ctx.fillStyle='#58a6ff';ctx.fill();
+    }
+  }
+
+  // Region title
+  ctx.fillStyle=col;ctx.font='bold 13px EB Garamond,serif';ctx.textAlign='left';
+  ctx.fillText(region,PAD.left,PAD.top-16);
+  ctx.fillStyle='#8b949e';ctx.font='10px JetBrains Mono,monospace';
+  ctx.fillText(`${getData().cpts.length} change point(s) detected`,PAD.left+ctx.measureText(region).width+20,PAD.top-16);
+
+  // Progress indicator
+  document.getElementById('prog').style.width=((count/N)*100)+'%';
+}
+
+// ── Animation loop ───────────────────────────────────────
+function animate(ts){
+  if(!playing)return;
+  const interval=1000/(speed*6);
+  if(ts-lastTime>=interval){
+    lastTime=ts;
+    animFrame=Math.min(animFrame+1,N);
+    draw(animFrame);
+    if(animFrame>=N){playing=false;document.getElementById('play-btn').textContent='▶ Play Again';}
+  }
+  if(playing) rafId=requestAnimationFrame(animate);
+}
+
+function togglePlay(){
+  if(animFrame>=N){animFrame=0;}
+  playing=!playing;
+  document.getElementById('play-btn').textContent=playing?'⏸ Pause':'▶ Play Animation';
+  if(playing){lastTime=0;rafId=requestAnimationFrame(animate);}
+  else{cancelAnimationFrame(rafId);}
+}
+
+function resetAnim(){
+  playing=false; animFrame=0;
+  cancelAnimationFrame(rafId);
+  document.getElementById('play-btn').textContent='▶ Play Animation';
+  draw(0);
+}
+
+function updateSpeed(v){speed=+v;document.getElementById('speed-label').textContent=v+'×';}
+
+// ── Hover tooltip ────────────────────────────────────────
+canvas.addEventListener('mousemove',e=>{
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const {vals,cpts}=getData();
+  const plotW=canvas.width-PAD.left-PAD.right;
+  const barW=plotW/N;
+  const xi=Math.floor((mx-PAD.left)/barW);
+  if(xi<0||xi>=N){document.getElementById('tooltip').style.opacity=0;return;}
+  const yr=YEARS[xi], v=vals[xi];
+  const isCpt=cpts.includes(xi);
+  document.getElementById('tooltip').style.opacity=1;
+  document.getElementById('tooltip').style.left=(e.clientX+12)+'px';
+  document.getElementById('tooltip').style.top=(e.clientY-10)+'px';
+  document.getElementById('tooltip').innerHTML=
+    `<div style="color:#8b949e;font-size:.7rem">${yr}</div>`+
+    `<div style="color:${v>=0?'#3fb950':'#f85149'};font-size:.9rem;font-weight:600">${v>=0?'+':''}${v.toFixed(4)}</div>`+
+    (isCpt?`<div style="color:#ff7b72;font-size:.72rem;margin-top:.2rem">⚡ Change point</div>`:'');
+});
+canvas.addEventListener('mouseleave',()=>{document.getElementById('tooltip').style.opacity=0;});
+
+// ── Init ─────────────────────────────────────────────────
+window.addEventListener('resize',resize);
+buildRegionButtons();
+updateSidebar();
+resize();
+draw(N); // Show full data on load
+</script>
+</body>
+</html>
